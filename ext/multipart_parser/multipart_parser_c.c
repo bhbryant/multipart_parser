@@ -50,6 +50,8 @@ enum state {
   s_uninitialized = 1,
   s_start,
   s_start_boundary,
+  s_preamble,
+  s_preamble_almost_boundary,
   s_header_field_start,
   s_header_field,
   s_headers_almost_done,
@@ -137,10 +139,35 @@ size_t multipart_parser_c_execute(multipart_parser_c* p, const multipart_parser_
           p->state = s_header_field_start;
           break;
         }
+
+        /* if starting boundaru doesn't match, assume we are reading the preamble */
         if (c != p->multipart_boundary[p->index]) {
-          return i;
+          p->index = 0;
+
+          if (c == CR) { /* smallest preable is CR LF */
+
+            p->state = s_preamble_almost_boundary;
+          } else {
+            p->state = s_preamble;
+          }
+          break;
         }
+
         p->index++;
+        break;
+
+      case s_preamble:
+        if (c == CR) {
+            p->state = s_preamble_almost_boundary;
+        }
+        break;
+
+      case s_preamble_almost_boundary:
+        if(c == LF) {
+          p->state = s_start_boundary;
+        } else {
+          p->state = s_preamble;
+        }
         break;
 
       case s_header_field_start:

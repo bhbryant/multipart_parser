@@ -151,7 +151,113 @@ describe MultipartParser do
     expect(MultipartParser::VERSION).not_to be nil
   end
 
+
   specify { expect { MultipartParser.new }.to raise_error(ArgumentError) }
+
+  context "multipart_parser.c" do
+    let(:parser) { MultipartParser.new "Boundary+17376C87E2579930" }
+
+
+    # https://www.ietf.org/rfc/rfc2046.txt
+
+    #   boundary := 0*69<bchars> bcharsnospace
+
+    #   bchars := bcharsnospace / " "
+
+    #   bcharsnospace := DIGIT / ALPHA / "'" / "(" / ")" /
+    #                    "+" / "_" / "," / "-" / "." /
+    #                    "/" / ":" / "=" / "?"
+
+    # Overall, the body of a "multipart" entity may be specified as
+    # follows:
+
+    #   dash-boundary := "--" boundary
+    #                    ; boundary taken from the value of
+    #                    ; boundary parameter of the
+    #                    ; Content-Type field.
+
+    #   multipart-body := [preamble CRLF]
+    #                     dash-boundary transport-padding CRLF
+    #                     body-part *encapsulation
+    #                     close-delimiter transport-padding
+    #                     [CRLF epilogue]
+
+
+    #   transport-padding := *LWSP-char
+    #                        ; Composers MUST NOT generate
+    #                        ; non-zero length transport
+    #                        ; padding, but receivers MUST
+    #                        ; be able to handle padding
+    #                        ; added by message transports.
+
+    #   encapsulation := delimiter transport-padding
+    #                    CRLF body-part
+
+    #   delimiter := CRLF dash-boundary
+
+    #   close-delimiter := delimiter "--"
+
+    #   preamble := discard-text
+
+    #   epilogue := discard-text
+
+    #   discard-text := *(*text CRLF) *text
+    #                   ; May be ignored or discarded.
+
+    #   body-part := MIME-part-headers [CRLF *OCTET]
+    #                ; Lines in a body-part must not start
+    #                ; with the specified dash-boundary and
+    #                ; the delimiter must not appear anywhere
+    #                ; in the body part.  Note that the
+    #                ; semantics of a body-part differ from
+    #                ; the semantics of a message, as
+    #                ; described in the text.
+
+    #   OCTET := <any 0-255 octet value>
+
+    it "allows a preamble" do
+      #https://www.ietf.org/rfc/rfc2046.txt  section 5.1.1
+
+      #    There appears to be room for additional information prior to the
+      # first boundary delimiter line and following the final boundary
+      # delimiter line.  These areas should generally be left blank, and
+      # IMPLEMENTATIONS MUST IGNORE ANYTHING THAT APPEARS BEFORE THE FIRST
+      # BOUNDARY DELIMITER LINE OR AFTER THE LAST ONE.
+
+      parser.on_data = handler
+
+      expect(handler).to receive(:call).with("first frame")
+
+      parser << "preamble\r\n--Boundary+17376C87E2579930\r\n\r\nfirst frame\r\n";
+      parser << "--Boundary+17376C87E2579930--\r\n"
+
+    end
+
+    it "requires the preamble to be terminated with a CRLF" do
+
+      #   multipart-body := [preamble CRLF]
+      #                     dash-boundary transport-padding CRLF
+
+      parser.on_data = handler
+
+      expect(handler).to_not receive(:call)
+
+      parser << "preamble--Boundary+17376C87E2579930\r\n\r\nfirst frame\r\n";
+      parser << "--Boundary+17376C87E2579930--\r\n"
+
+    end
+
+    it "handles a preamble that is only CRLF" do
+
+      parser.on_data = handler
+
+      expect(handler).to receive(:call).with("first frame")
+
+      parser << "\r\n--Boundary+17376C87E2579930\r\n\r\nfirst frame\r\n";
+      parser << "--Boundary+17376C87E2579930--\r\n"
+
+    end
+  end
 
 end
 
